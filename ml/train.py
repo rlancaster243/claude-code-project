@@ -82,14 +82,30 @@ def time_split(df: "pd.DataFrame", target: str) -> None:
     model.fit(train_df[FEATURE_COLUMNS], train_df[target])
 
     df["y_pred"] = model.predict(df[FEATURE_COLUMNS])
+    # Persistence (random-walk) baseline: predict next_close = today's close.
+    df["y_pred_baseline"] = df["close"]
 
     test_metrics = evaluate(test_df[target], model.predict(test_df[FEATURE_COLUMNS]))
+    baseline_metrics = evaluate(test_df[target], test_df["close"])
+    # Skill = fractional error reduction vs the baseline (>0 means the model
+    # beats persistence; <=0 means it does not).
+    rmse_skill = (
+        1.0 - test_metrics["rmse"] / baseline_metrics["rmse"]
+        if baseline_metrics["rmse"] else float("nan")
+    )
+    mae_skill = (
+        1.0 - test_metrics["mae"] / baseline_metrics["mae"]
+        if baseline_metrics["mae"] else float("nan")
+    )
     metrics = {
         "split": "time_70_30",
         "cutoff_date": str(cutoff_date),
         "n_train": int(len(train_df)),
         "n_test": int(len(test_df)),
         **test_metrics,
+        "baseline": baseline_metrics,
+        "rmse_skill_vs_baseline": float(rmse_skill),
+        "mae_skill_vs_baseline": float(mae_skill),
         "features": FEATURE_COLUMNS,
         "target": target,
     }
@@ -99,13 +115,20 @@ def time_split(df: "pd.DataFrame", target: str) -> None:
     with open(OUT_DIR / "metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
 
-    predictions = df[["symbol", "bar_date", target, "y_pred", "split"]].rename(
-        columns={target: "y_true"}
-    )
+    predictions = df[
+        ["symbol", "bar_date", target, "y_pred", "y_pred_baseline", "split"]
+    ].rename(columns={target: "y_true"})
     predictions.to_parquet(OUT_DIR / "predictions.parquet", index=False)
 
     print("[train] holdout (time 70/30) metrics:")
     print(json.dumps(metrics, indent=2))
+    print(
+        f"[train] model vs persistence baseline: "
+        f"RMSE {test_metrics['rmse']:.4f} vs {baseline_metrics['rmse']:.4f} "
+        f"({rmse_skill:+.1%} skill), "
+        f"MAE {test_metrics['mae']:.4f} vs {baseline_metrics['mae']:.4f} "
+        f"({mae_skill:+.1%} skill)"
+    )
     print(f"[train] model -> {OUT_DIR / 'model.json'}")
 
     return metrics
@@ -143,6 +166,7 @@ def walk_forward(df: "pd.DataFrame", target: str) -> None:
         y_pred = model.predict(test_df[FEATURE_COLUMNS])
 
         fold_eval = evaluate(test_df[target], y_pred)
+        base_eval = evaluate(test_df[target], test_df["close"])  # persistence
         fold_metrics.append(
             {
                 "fold": k,
@@ -150,6 +174,9 @@ def walk_forward(df: "pd.DataFrame", target: str) -> None:
                 "n_train": int(len(train_df)),
                 "n_test": int(len(test_df)),
                 **fold_eval,
+                "baseline_rmse": base_eval["rmse"],
+                "baseline_mae": base_eval["mae"],
+                "baseline_r2": base_eval["r2"],
             }
         )
 
@@ -177,12 +204,16 @@ def walk_forward(df: "pd.DataFrame", target: str) -> None:
         json.dump(fold_metrics, f, indent=2)
 
     print("[train] walk-forward fold table:")
-    header = f"{'fold':>4} {'train_end':>12} {'n_train':>8} {'n_test':>7} {'rmse':>10} {'mae':>10} {'r2':>8}"
+    header = (
+        f"{'fold':>4} {'train_end':>12} {'n_train':>8} {'n_test':>7} "
+        f"{'rmse':>10} {'base_rmse':>10} {'r2':>8}"
+    )
     print(header)
     for m in fold_metrics:
         print(
-            f"{m['fold']:>4} {m['train_end_date']:>12} {m['n_train']:>8} "
-            f"{m['n_test']:>7} {m['rmse']:>10.4f} {m['mae']:>10.4f} {m['r2']:>8.4f}"
+            f"{m['fold']:>4} {m['train_end_date'][:10]:>12} {m['n_train']:>8} "
+            f"{m['n_test']:>7} {m['rmse']:>10.4f} {m['baseline_rmse']:>10.4f} "
+            f"{m['r2']:>8.4f}"
         )
 
     return fold_metrics

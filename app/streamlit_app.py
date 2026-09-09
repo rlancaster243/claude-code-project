@@ -257,6 +257,48 @@ else:
         with st.expander("Model features"):
             st.write(", ".join(str(f) for f in features))
 
+    # ----------------------------------------------------------------------
+    # Model vs. persistence baseline (predict next_close = today's close).
+    # The honest bar for a next-day price forecast: does the model beat the
+    # naive random-walk guess?
+    # ----------------------------------------------------------------------
+    baseline = metrics.get("baseline")
+    if isinstance(baseline, dict):
+        st.markdown("**Model vs. persistence baseline** (baseline predicts next close = today's close)")
+        b1, b2, b3, b4 = st.columns(4)
+
+        def _fmt(x):
+            return f"{x:.4f}" if isinstance(x, (int, float)) else "n/a"
+
+        b_rmse = baseline.get("rmse")
+        b_mae = baseline.get("mae")
+        b_r2 = baseline.get("r2")
+        rmse_skill = metrics.get("rmse_skill_vs_baseline")
+        mae_skill = metrics.get("mae_skill_vs_baseline")
+
+        # delta vs model metric; Streamlit colors positive green by default, so
+        # invert the color for error metrics where lower is better.
+        b1.metric(
+            "Baseline RMSE", _fmt(b_rmse),
+            delta=(f"{rmse_skill:+.1%} skill" if isinstance(rmse_skill, (int, float)) else None),
+            delta_color="normal",
+        )
+        b2.metric(
+            "Baseline MAE", _fmt(b_mae),
+            delta=(f"{mae_skill:+.1%} skill" if isinstance(mae_skill, (int, float)) else None),
+            delta_color="normal",
+        )
+        b3.metric("Baseline R²", _fmt(b_r2))
+        beats = isinstance(rmse_skill, (int, float)) and rmse_skill > 0
+        b4.metric("Model beats baseline?", "Yes" if beats else "No")
+        if not beats:
+            st.info(
+                "The model does **not** beat naive persistence on RMSE — expected for "
+                "next-day *close* levels, which are near a random walk. A high R² here "
+                "reflects that tomorrow's close ≈ today's close, not predictive edge. "
+                "Predicting next-day **return** or **direction** is a more meaningful target."
+            )
+
 st.divider()
 
 tab_split, tab_walkforward = st.tabs(["Train/Test Split", "Walk-Forward Validation"])
