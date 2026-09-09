@@ -1,0 +1,33 @@
+# Config-driven extract. Swap `base_url`/`params`/`record_path` for any REST API;
+# the rest of the pipeline reads `source_name`, `primary_key`, and `target_column`.
+#
+# Default: CoinGecko markets (no API key required). Predict `current_price`.
+
+source_name: coingecko_markets          # -> DuckDB table raw.coingecko_markets
+base_url: "https://api.coingecko.com/api/v3/coins/markets"
+
+# Optional: name of an env var holding an API key. Left blank = no auth.
+# The key is sent as header `x-cg-demo-api-key` if present.
+auth_env: ""
+
+# Static query params sent on every request.
+params:
+  vs_currency: usd
+  order: market_cap_desc
+  sparkline: "false"
+
+# Pagination: request `per_page` rows per page, walking `page` from 1.
+paging:
+  page_param: page
+  per_page_param: per_page
+  per_page: 250
+  max_pages: 4                          # up to 1000 rows for the demo
+
+# JSON path to the list of records. Empty = response is the list itself.
+record_path: ""
+
+# Column that uniquely identifies a record (used for idempotent upsert + dedup).
+primary_key: id
+
+# The value XGBoost will predict.
+target_column: current_price

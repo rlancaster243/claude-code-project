@@ -1,0 +1,9 @@
+pipeline:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Same DuckDB file the extract step writes to (relative to transform/).
+      path: "../warehouse/pipeline.duckdb"
+      schema: main
+      threads: 4

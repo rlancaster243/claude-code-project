@@ -1,0 +1,14 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    description: "Landing zone written by extract/extract.py (untransformed)."
+    tables:
+      - name: coingecko_markets
+        description: "Raw CoinGecko /coins/markets records, one row per coin."
+        columns:
+          - name: id
+            description: "Coin id (primary key)."
+            tests:
+              - not_null

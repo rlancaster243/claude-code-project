@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: fct_prices
+    description: "Fact table: one priced observation per coin; feeds the model."
+    columns:
+      - name: coin_id
+        description: "Coin id. FK to dim_coin."
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              to: ref('dim_coin')
+              field: coin_id
+      - name: current_price
+        description: "Price target predicted by XGBoost."
+        tests:
+          - not_null
+
+  - name: dim_coin
+    description: "Dimension: descriptive attributes per coin."
+    columns:
+      - name: coin_id
+        tests:
+          - not_null
+          - unique
