@@ -41,4 +41,4 @@ date_key: bar_date
 primary_key: [symbol, bar_date]
 
 # The value XGBoost will predict (derived in the mart as lead(close)).
-target_column: next_close
+target_column: next_return

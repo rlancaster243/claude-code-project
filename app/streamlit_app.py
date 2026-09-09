@@ -264,7 +264,7 @@ else:
     # ----------------------------------------------------------------------
     baseline = metrics.get("baseline")
     if isinstance(baseline, dict):
-        st.markdown("**Model vs. persistence baseline** (baseline predicts next close = today's close)")
+        st.markdown("**Model vs. random-walk baseline** (baseline = zero return, i.e. tomorrow's close = today's)")
         b1, b2, b3, b4 = st.columns(4)
 
         def _fmt(x):
@@ -293,10 +293,10 @@ else:
         b4.metric("Model beats baseline?", "Yes" if beats else "No")
         if not beats:
             st.info(
-                "The model does **not** beat naive persistence on RMSE — expected for "
-                "next-day *close* levels, which are near a random walk. A high R² here "
-                "reflects that tomorrow's close ≈ today's close, not predictive edge. "
-                "Predicting next-day **return** or **direction** is a more meaningful target."
+                "The model does **not** beat the zero-return random-walk baseline on "
+                "RMSE. Next-day returns are close to unpredictable from these features, "
+                "so beating a zero-return forecast is a genuinely hard bar — a negative "
+                "or near-zero R² here is the honest, expected outcome."
             )
 
 st.divider()

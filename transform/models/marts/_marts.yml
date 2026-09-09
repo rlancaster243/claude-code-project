@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: fct_prices
-    description: "Fact: one row per (symbol, bar_date). Target next_close feeds the model."
+    description: "Fact: one row per (symbol, bar_date). Target next_return feeds the model."
     columns:
       - name: symbol
         description: "Ticker. FK to dim_symbol."
@@ -15,8 +15,12 @@ models:
         description: "Bar date (with symbol, the grain)."
         tests:
           - not_null
+      - name: next_return
+        description: "Next trading day's simple return - the value XGBoost predicts."
+        tests:
+          - not_null
       - name: next_close
-        description: "Next trading day's close - the value XGBoost predicts."
+        description: "Next trading day's close (kept for reference/plots)."
         tests:
           - not_null
 

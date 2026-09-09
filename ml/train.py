@@ -82,11 +82,12 @@ def time_split(df: "pd.DataFrame", target: str) -> None:
     model.fit(train_df[FEATURE_COLUMNS], train_df[target])
 
     df["y_pred"] = model.predict(df[FEATURE_COLUMNS])
-    # Persistence (random-walk) baseline: predict next_close = today's close.
-    df["y_pred_baseline"] = df["close"]
+    # Random-walk baseline for a next-day RETURN target: predict zero return
+    # (i.e. tomorrow's close = today's close).
+    df["y_pred_baseline"] = 0.0
 
     test_metrics = evaluate(test_df[target], model.predict(test_df[FEATURE_COLUMNS]))
-    baseline_metrics = evaluate(test_df[target], test_df["close"])
+    baseline_metrics = evaluate(test_df[target], np.zeros(len(test_df)))
     # Skill = fractional error reduction vs the baseline (>0 means the model
     # beats persistence; <=0 means it does not).
     rmse_skill = (
@@ -166,7 +167,7 @@ def walk_forward(df: "pd.DataFrame", target: str) -> None:
         y_pred = model.predict(test_df[FEATURE_COLUMNS])
 
         fold_eval = evaluate(test_df[target], y_pred)
-        base_eval = evaluate(test_df[target], test_df["close"])  # persistence
+        base_eval = evaluate(test_df[target], np.zeros(len(test_df)))  # zero-return
         fold_metrics.append(
             {
                 "fold": k,

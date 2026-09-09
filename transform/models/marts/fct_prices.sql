@@ -1,13 +1,15 @@
 -- Fact: one row per (symbol, bar) observation. Grain = symbol + bar_date.
--- Carries the forecasting target `next_close` plus the features known at the
--- close of the current bar. Rows lacking a target (each symbol's last bar) or
--- warm-up lags are dropped so the model only sees complete examples.
+-- Carries the forecasting target `next_return` (with `next_close` kept for
+-- reference/plots) plus the features known at the close of the current bar.
+-- Rows lacking a target (each symbol's last bar) or warm-up lags are dropped
+-- so the model only sees complete examples.
 
 select
     symbol,                               -- FK -> dim_symbol
     bar_date,
 
-    -- target: next trading day's close
+    -- target: next trading day's simple return; next_close kept for context
+    next_return,
     next_close,
 
     -- current-bar features (all known at prediction time)

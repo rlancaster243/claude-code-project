@@ -74,6 +74,8 @@ select
     close_ma_5,
     close_ma_10,
     next_close,
+    -- forecasting target: next trading day's simple return vs today's close
+    case when close <> 0 then next_close / close - 1 end    as next_return,
     case when close_lag_1 is not null and close_lag_1 <> 0
          then close / close_lag_1 - 1 end                   as return_1d
 from featured
