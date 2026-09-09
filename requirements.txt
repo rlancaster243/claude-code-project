@@ -1,0 +1,8 @@
+# Streamlit Community Cloud installs from this file (it uses pip, not uv).
+# Only what the dashboard needs at runtime — it reads the committed artifacts
+# in models_out/ and, optionally, the local DuckDB warehouse.
+streamlit>=1.38
+plotly>=5.24
+pandas>=2.2
+pyarrow>=17
+duckdb>=1.1

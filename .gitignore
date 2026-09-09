@@ -20,4 +20,11 @@ transform/logs/
 # keep empty dirs
 !warehouse/.gitkeep
 !models_out/.gitkeep
+
+# Deployed dashboard reads these artifacts (small); keep them tracked so the
+# Streamlit Cloud app has data without running the pipeline there.
+!models_out/metrics.json
+!models_out/predictions.parquet
+!models_out/walkforward.parquet
+!models_out/walkforward_metrics.json
 transform/.user.yml
