@@ -1,26 +1,35 @@
--- Fact: one row per coin observation. Grain = coin_id. Carries the price
--- target plus the numeric features consumed by the XGBoost model.
+-- Fact: one row per (symbol, bar) observation. Grain = symbol + bar_ts.
+-- Carries the forecasting target `next_close` plus the features known at the
+-- close of the current bar. Rows lacking a target (each symbol's last bar) or
+-- warm-up lags are dropped so the model only sees complete examples.
 
 select
-    coin_id,                              -- FK -> dim_coin
+    symbol,                               -- FK -> dim_symbol
+    bar_ts,
+    bar_date,
 
-    -- target
-    current_price,
+    -- target: next trading day's close
+    next_close,
 
-    -- features (no direct price leakage: high_24h/low_24h/absolute change omitted)
-    market_cap,
-    market_cap_rank,
-    fully_diluted_valuation,
-    total_volume,
-    price_change_pct_24h,
-    market_cap_change_pct_24h,
-    circulating_supply,
-    total_supply,
-    max_supply,
-    ath_change_pct,
-    atl_change_pct,
-    volume_to_mcap_ratio,
-    supply_utilization,
+    -- current-bar features (all known at prediction time)
+    open,
+    high,
+    low,
+    close,
+    volume,
+    trade_count,
+    vwap,
+    range_abs,
+    change_abs,
+    return_1d,
 
-    ingested_at
-from {{ ref('int_markets_dedup') }}
+    -- lagged / trailing features
+    close_lag_1,
+    close_lag_2,
+    close_lag_3,
+    volume_lag_1,
+    close_ma_5,
+    close_ma_10
+from {{ ref('int_bars_features') }}
+where next_close is not null
+  and close_lag_3 is not null             -- ensure warm-up lags are populated

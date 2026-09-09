@@ -4,6 +4,13 @@ Pull raw records from a config-driven REST API into DuckDB, untouched.
 The only transforms here are what's needed to *land* the data (flatten JSON,
 add audit columns). All cleaning/typing is dbt's job downstream.
 
+Supports:
+  * auth via a header -> env-var map (secrets stay in the environment)
+  * pagination by numbered page OR opaque continuation token
+  * responses that are a plain list, a list at `record_path`, or a
+    dict-of-lists keyed by symbol (`record_style: symbol_dict`)
+  * single or composite primary keys for idempotent upsert
+
 Idempotent: re-running replaces rows with the same primary key, so the raw
 table row count is stable across runs.
 """
@@ -47,41 +54,86 @@ def build_session() -> requests.Session:
     return session
 
 
-def get_records(cfg: dict, session: requests.Session) -> list[dict]:
-    """Page through the API and return the raw list of record dicts."""
-    headers = {}
-    auth_env = cfg.get("auth_env") or ""
-    if auth_env:
-        key = os.environ.get(auth_env)
-        if not key:
-            sys.exit(f"ERROR: config auth_env='{auth_env}' but that env var is unset.")
-        headers["x-cg-demo-api-key"] = key
+def auth_headers(cfg: dict) -> dict:
+    """Resolve {header: env_var_name} -> {header: value} from the environment."""
+    headers: dict[str, str] = {}
+    for header, env_var in (cfg.get("auth_headers") or {}).items():
+        value = os.environ.get(env_var)
+        if not value:
+            sys.exit(
+                f"ERROR: header '{header}' needs env var '{env_var}', which is unset.\n"
+                f"       export {env_var}=... before running the extract."
+            )
+        headers[header] = value
+    return headers
 
-    paging = cfg.get("paging") or {}
-    per_page = paging.get("per_page")
-    max_pages = paging.get("max_pages", 1)
+
+def extract_page_records(cfg: dict, payload) -> list[dict]:
+    """Pull the list of record dicts out of one response payload."""
+    record_style = cfg.get("record_style", "list")
     record_path = cfg.get("record_path") or ""
 
-    records: list[dict] = []
-    for page in range(1, max_pages + 1):
-        params = dict(cfg.get("params") or {})
-        if per_page:
-            params[paging["per_page_param"]] = per_page
-            params[paging["page_param"]] = page
+    node = payload[record_path] if record_path else payload
 
-        resp = session.get(cfg["base_url"], params=params, headers=headers, timeout=30)
-        resp.raise_for_status()
+    if record_style == "symbol_dict":
+        # node is {symbol: [record, ...], ...}; inject the key as a column.
+        if not isinstance(node, dict):
+            sys.exit(f"ERROR: record_style=symbol_dict but '{record_path}' is not a dict.")
+        symbol_key = cfg.get("symbol_key", "symbol")
+        rows: list[dict] = []
+        for key, records in node.items():
+            for rec in records or []:
+                rows.append({symbol_key: key, **rec})
+        return rows
+
+    if not isinstance(node, list):
+        sys.exit(f"ERROR: expected a list of records, got {type(node)}.")
+    return node
+
+
+def get_records(cfg: dict, session: requests.Session) -> list[dict]:
+    """Page through the API and return the raw list of record dicts."""
+    headers = auth_headers(cfg)
+    paging = cfg.get("paging") or {}
+    style = paging.get("style", "page")
+    max_pages = paging.get("max_pages", 1)
+    base_params = dict(cfg.get("params") or {})
+
+    records: list[dict] = []
+    token = None
+    for page in range(1, max_pages + 1):
+        params = dict(base_params)
+        if style == "token":
+            if token:
+                params[paging["token_param"]] = token
+        elif style == "page":
+            per_page = paging.get("per_page")
+            if per_page:
+                params[paging["per_page_param"]] = per_page
+                params[paging["page_param"]] = page
+
+        resp = session.get(cfg["base_url"], params=params, headers=headers, timeout=60)
+        if not resp.ok:
+            sys.exit(f"ERROR: {resp.status_code} from API: {resp.text[:300]}")
         payload = resp.json()
 
-        page_records = payload[record_path] if record_path else payload
-        if not isinstance(page_records, list):
-            sys.exit(f"ERROR: expected a list of records, got {type(page_records)}.")
-        if not page_records:
-            break
+        page_records = extract_page_records(cfg, payload)
         records.extend(page_records)
-        if per_page and len(page_records) < per_page:
-            break  # last page
+
+        if style == "token":
+            token = payload.get(paging["token_response_field"])
+            if not token:
+                break
+        else:  # numbered pages
+            per_page = paging.get("per_page")
+            if not page_records or (per_page and len(page_records) < per_page):
+                break
     return records
+
+
+def pk_columns(cfg: dict) -> list[str]:
+    pk = cfg["primary_key"]
+    return [pk] if isinstance(pk, str) else list(pk)
 
 
 def land(cfg: dict, records: list[dict]) -> int:
@@ -90,11 +142,12 @@ def land(cfg: dict, records: list[dict]) -> int:
         sys.exit("ERROR: no records returned from the API; nothing to land.")
 
     source = cfg["source_name"]
-    pk = cfg["primary_key"]
+    keys = pk_columns(cfg)
 
     df = pd.json_normalize(records)
-    if pk not in df.columns:
-        sys.exit(f"ERROR: primary_key '{pk}' not present in API response columns.")
+    missing = [k for k in keys if k not in df.columns]
+    if missing:
+        sys.exit(f"ERROR: primary_key column(s) {missing} not in API response.")
     df["_ingested_at"] = datetime.now(timezone.utc)
     df["_source"] = source
 
@@ -104,11 +157,12 @@ def land(cfg: dict, records: list[dict]) -> int:
         con.execute(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}")
         table = f"{RAW_SCHEMA}.{source}"
         con.register("incoming", df)
-        # Create table on first run from the incoming shape.
         con.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM incoming LIMIT 0")
-        # Idempotent upsert: delete matching PKs, then insert the fresh rows.
+        # Idempotent upsert on the (composite) primary key.
+        key_tuple = ", ".join(keys)
         con.execute(
-            f"DELETE FROM {table} WHERE {pk} IN (SELECT {pk} FROM incoming)"
+            f"DELETE FROM {table} "
+            f"WHERE ({key_tuple}) IN (SELECT {key_tuple} FROM incoming)"
         )
         con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM incoming")
         count = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]

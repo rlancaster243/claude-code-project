@@ -1,33 +1,47 @@
-# Config-driven extract. Swap `base_url`/`params`/`record_path` for any REST API;
-# the rest of the pipeline reads `source_name`, `primary_key`, and `target_column`.
+# Config-driven extract. Swap these values for any REST API; the pipeline reads
+# source_name, primary_key, and target_column downstream.
 #
-# Default: CoinGecko markets (no API key required). Predict `current_price`.
+# Active source: Alpaca stock daily bars. Predict each symbol's NEXT-day close.
+#
+# SECRETS: never put keys here (this file is committed). `auth_headers` maps a
+# request header -> the NAME of an env var holding the value. Before running:
+#   export ALPACA_KEY_ID=...        # your Alpaca API key id
+#   export ALPACA_SECRET_KEY=...    # your Alpaca API secret key
 
-source_name: coingecko_markets          # -> DuckDB table raw.coingecko_markets
-base_url: "https://api.coingecko.com/api/v3/coins/markets"
+source_name: alpaca_stock_bars          # -> DuckDB table raw.alpaca_stock_bars
+base_url: "https://data.alpaca.markets/v2/stocks/bars"
 
-# Optional: name of an env var holding an API key. Left blank = no auth.
-# The key is sent as header `x-cg-demo-api-key` if present.
-auth_env: ""
+# header name -> env var name (value is read from the environment at runtime)
+auth_headers:
+  APCA-API-KEY-ID: ALPACA_KEY_ID
+  APCA-API-SECRET-KEY: ALPACA_SECRET_KEY
 
 # Static query params sent on every request.
 params:
-  vs_currency: usd
-  order: market_cap_desc
-  sparkline: "false"
+  symbols: "AAPL,MSFT,GOOGL,AMZN,TSLA,NVDA,META,JPM,XOM,WMT"
+  timeframe: "1Day"
+  start: "2023-01-01"                    # ISO date; end defaults to now
+  adjustment: "all"                      # split + dividend adjusted
+  feed: "iex"                            # free/paper tier; use "sip" if subscribed
+  sort: "asc"
+  limit: 10000                           # max rows per page
 
-# Pagination: request `per_page` rows per page, walking `page` from 1.
+# Response shape. Alpaca returns {"bars": {"AAPL": [...], "MSFT": [...]}, ...},
+# i.e. a dict keyed by symbol. `symbol_dict` flattens it, injecting the key as
+# `symbol_key`. (Use "list" for plain top-level/record_path lists.)
+record_style: symbol_dict
+record_path: bars                        # key holding the symbol->bars dict
+symbol_key: symbol                       # column name to store the dict key in
+
+# Pagination. Alpaca uses an opaque continuation token, not numbered pages.
 paging:
-  page_param: page
-  per_page_param: per_page
-  per_page: 250
-  max_pages: 4                          # up to 1000 rows for the demo
+  style: token
+  token_param: page_token                # request param carrying the token
+  token_response_field: next_page_token  # field in the response with the next token
+  max_pages: 50                          # safety cap
 
-# JSON path to the list of records. Empty = response is the list itself.
-record_path: ""
+# Row identity for idempotent upsert + dedup (composite key allowed).
+primary_key: [symbol, t]
 
-# Column that uniquely identifies a record (used for idempotent upsert + dedup).
-primary_key: id
-
-# The value XGBoost will predict.
-target_column: current_price
+# The value XGBoost will predict (derived in the mart as lead(close)).
+target_column: next_close

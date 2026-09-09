@@ -2,25 +2,28 @@ version: 2
 
 models:
   - name: fct_prices
-    description: "Fact table: one priced observation per coin; feeds the model."
+    description: "Fact: one row per (symbol, bar). Target next_close feeds the model."
     columns:
-      - name: coin_id
-        description: "Coin id. FK to dim_coin."
+      - name: symbol
+        description: "Ticker. FK to dim_symbol."
         tests:
           - not_null
-          - unique
           - relationships:
-              to: ref('dim_coin')
-              field: coin_id
-      - name: current_price
-        description: "Price target predicted by XGBoost."
+              to: ref('dim_symbol')
+              field: symbol
+      - name: bar_ts
+        description: "Bar timestamp (with symbol, the grain)."
+        tests:
+          - not_null
+      - name: next_close
+        description: "Next trading day's close - the value XGBoost predicts."
         tests:
           - not_null
 
-  - name: dim_coin
-    description: "Dimension: descriptive attributes per coin."
+  - name: dim_symbol
+    description: "Dimension: one row per symbol with its history window."
     columns:
-      - name: coin_id
+      - name: symbol
         tests:
           - not_null
           - unique

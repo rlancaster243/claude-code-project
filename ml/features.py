@@ -16,20 +16,24 @@ DB_PATH = ROOT / "warehouse" / "pipeline.duckdb"
 MART_RELATION = "marts.fct_prices"
 
 # Numeric features exposed by fct_prices (excludes ids, target, and audit cols).
+# All are known at the close of the current bar; the target is the next close.
 FEATURE_COLUMNS = [
-    "market_cap",
-    "market_cap_rank",
-    "fully_diluted_valuation",
-    "total_volume",
-    "price_change_pct_24h",
-    "market_cap_change_pct_24h",
-    "circulating_supply",
-    "total_supply",
-    "max_supply",
-    "ath_change_pct",
-    "atl_change_pct",
-    "volume_to_mcap_ratio",
-    "supply_utilization",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "trade_count",
+    "vwap",
+    "range_abs",
+    "change_abs",
+    "return_1d",
+    "close_lag_1",
+    "close_lag_2",
+    "close_lag_3",
+    "volume_lag_1",
+    "close_ma_5",
+    "close_ma_10",
 ]
 
 

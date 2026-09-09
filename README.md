@@ -12,7 +12,7 @@ Public REST API
 DuckDB raw.<source>
    │  dbt-core (dbt-duckdb)
    ▼
-staging  ->  intermediate  ->  marts (fct_prices + dim_coin)
+staging  ->  intermediate  ->  marts (fct_prices + dim_symbol)
    │  ml/train.py  (reads marts.fct_prices)
    ▼
 XGBoost regressor  ->  train/test split  ->  models_out/metrics.json
@@ -32,6 +32,11 @@ raw table → dbt sources → mart table → model features.
 
 ```bash
 uv sync            # or: make setup
+
+# Alpaca credentials (never commit these; config only stores the env-var names)
+export ALPACA_KEY_ID=...
+export ALPACA_SECRET_KEY=...
+
 make all           # extract -> transform -> train
 ```
 
@@ -39,14 +44,17 @@ Individual stages: `make extract` · `make transform` · `make train` · `make c
 
 ## Using a different API
 
-The default source is CoinGecko `/coins/markets` (no API key, target =
-`current_price`). To point at another REST API, edit `config/source.yml`
-(`base_url`, `params`, `record_path`, `primary_key`, `target_column`) and adjust
-the staging model `transform/models/staging/` to match the new columns. The
-intermediate, mart, and ML layers are driven off those names.
+The active source is Alpaca daily stock bars (`/v2/stocks/bars`), predicting each
+symbol's **next-day close** from current + lagged OHLCV features. To point at
+another REST API, edit `config/source.yml` (`base_url`, `params`, `record_style`,
+`record_path`, `primary_key`, `target_column`) and adjust the staging model in
+`transform/models/staging/` to match the new columns. The intermediate, mart,
+and ML layers are driven off those names.
 
-If the API needs a key, set `auth_env` to the name of an environment variable
-holding the key (never commit the key itself).
+Auth is a header→env-var map (`auth_headers`): each request header pulls its
+value from the named environment variable, so **secrets never live in the repo**.
+For Alpaca, edit the `symbols`/date range in `config/source.yml` and export
+`ALPACA_KEY_ID` / `ALPACA_SECRET_KEY`. Free/paper keys must use `feed: iex`.
 
 ## Layout
 
@@ -56,7 +64,7 @@ holding the key (never commit the key itself).
 | `extract/extract.py` | REST → DuckDB `raw.*` (idempotent upsert) |
 | `transform/models/staging/` | type-cast / rename, 1:1 with raw |
 | `transform/models/intermediate/` | dedup + derived features |
-| `transform/models/marts/` | `fct_prices`, `dim_coin` + schema tests |
+| `transform/models/marts/` | `fct_prices`, `dim_symbol` + schema tests |
 | `ml/features.py` | shared feature list + target |
 | `ml/train.py` | XGBoost train/eval, writes `models_out/metrics.json` |
 
