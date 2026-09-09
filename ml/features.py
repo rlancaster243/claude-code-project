@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config" / "source.yml"
 DB_PATH = ROOT / "warehouse" / "pipeline.duckdb"
 MART_RELATION = "marts.fct_prices"
+OUT_DIR = ROOT / "models_out"
 
 # Numeric features exposed by fct_prices (excludes ids, target, and audit cols).
 # All are known at the close of the current bar; the target is the next close.
@@ -23,8 +24,6 @@ FEATURE_COLUMNS = [
     "low",
     "close",
     "volume",
-    "trade_count",
-    "vwap",
     "range_abs",
     "change_abs",
     "return_1d",

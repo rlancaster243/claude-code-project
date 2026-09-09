@@ -5,14 +5,14 @@ sources:
     schema: raw
     description: "Landing zone written by extract/extract.py (untransformed)."
     tables:
-      - name: alpaca_stock_bars
-        description: "Raw Alpaca daily bars, one row per (symbol, timestamp)."
+      - name: alphavantage_daily
+        description: "Raw Alpha Vantage TIME_SERIES_DAILY bars, one row per (symbol, bar_date)."
         columns:
           - name: symbol
             description: "Ticker symbol (part of primary key)."
             tests:
               - not_null
-          - name: t
-            description: "Bar timestamp (ISO 8601, part of primary key)."
+          - name: bar_date
+            description: "Bar date (part of primary key)."
             tests:
               - not_null

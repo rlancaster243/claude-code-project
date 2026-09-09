@@ -1,47 +1,44 @@
 # Config-driven extract. Swap these values for any REST API; the pipeline reads
 # source_name, primary_key, and target_column downstream.
 #
-# Active source: Alpaca stock daily bars. Predict each symbol's NEXT-day close.
+# Active source: Alpha Vantage TIME_SERIES_DAILY. Predict each symbol's
+# NEXT-day close from current + lagged OHLCV features.
 #
-# SECRETS: never put keys here (this file is committed). `auth_headers` maps a
-# request header -> the NAME of an env var holding the value. Before running:
-#   export ALPACA_KEY_ID=...        # your Alpaca API key id
-#   export ALPACA_SECRET_KEY=...    # your Alpaca API secret key
+# SECRETS: never put the key here (this file is committed). `auth_params` maps a
+# query param -> the NAME of an env var holding the value. Before running:
+#   export ALPHAVANTAGE_API_KEY=...     # free key from alphavantage.co
 
-source_name: alpaca_stock_bars          # -> DuckDB table raw.alpaca_stock_bars
-base_url: "https://data.alpaca.markets/v2/stocks/bars"
+source_name: alphavantage_daily         # -> DuckDB table raw.alphavantage_daily
+base_url: "https://www.alphavantage.co/query"
 
-# header name -> env var name (value is read from the environment at runtime)
-auth_headers:
-  APCA-API-KEY-ID: ALPACA_KEY_ID
-  APCA-API-SECRET-KEY: ALPACA_SECRET_KEY
+# Query-param auth: param name -> env var name (value read at runtime).
+auth_params:
+  apikey: ALPHAVANTAGE_API_KEY
 
 # Static query params sent on every request.
 params:
-  symbols: "AAPL,MSFT,GOOGL,AMZN,TSLA,NVDA,META,JPM,XOM,WMT"
-  timeframe: "1Day"
-  start: "2023-01-01"                    # ISO date; end defaults to now
-  adjustment: "all"                      # split + dividend adjusted
-  feed: "iex"                            # free/paper tier; use "sip" if subscribed
-  sort: "asc"
-  limit: 10000                           # max rows per page
+  function: TIME_SERIES_DAILY
+  outputsize: compact                    # last 100 rows (full is premium-only)
+  datatype: json
 
-# Response shape. Alpaca returns {"bars": {"AAPL": [...], "MSFT": [...]}, ...},
-# i.e. a dict keyed by symbol. `symbol_dict` flattens it, injecting the key as
-# `symbol_key`. (Use "list" for plain top-level/record_path lists.)
-record_style: symbol_dict
-record_path: bars                        # key holding the symbol->bars dict
-symbol_key: symbol                       # column name to store the dict key in
+# Alpha Vantage returns ONE symbol per request, so the extractor loops over
+# these, issuing a request each and tagging rows with the symbol. Kept to 5 to
+# stay under the free tier's 25 requests/day.
+per_symbol:
+  symbols: [AAPL, MSFT, GOOGL, AMZN, TSLA]
+  symbol_param: symbol                   # request param carrying the ticker
+  symbol_key: symbol                     # column to store the ticker in
+  delay_seconds: 15                      # spacing to respect ~5 req/min
 
-# Pagination. Alpaca uses an opaque continuation token, not numbered pages.
-paging:
-  style: token
-  token_param: page_token                # request param carrying the token
-  token_response_field: next_page_token  # field in the response with the next token
-  max_pages: 50                          # safety cap
+# Response shape: {"Time Series (Daily)": {"2024-01-02": {"1. open": ...}, ...}}
+# i.e. a dict keyed by date. `date_dict` flattens it, storing the key as
+# `date_key` and the "N. field" values as columns (renamed in staging).
+record_style: date_dict
+record_path: "Time Series (Daily)"
+date_key: bar_date
 
-# Row identity for idempotent upsert + dedup (composite key allowed).
-primary_key: [symbol, t]
+# Row identity for idempotent upsert + dedup (composite key).
+primary_key: [symbol, bar_date]
 
 # The value XGBoost will predict (derived in the mart as lead(close)).
 target_column: next_close

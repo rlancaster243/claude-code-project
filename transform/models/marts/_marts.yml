@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: fct_prices
-    description: "Fact: one row per (symbol, bar). Target next_close feeds the model."
+    description: "Fact: one row per (symbol, bar_date). Target next_close feeds the model."
     columns:
       - name: symbol
         description: "Ticker. FK to dim_symbol."
@@ -11,8 +11,8 @@ models:
           - relationships:
               to: ref('dim_symbol')
               field: symbol
-      - name: bar_ts
-        description: "Bar timestamp (with symbol, the grain)."
+      - name: bar_date
+        description: "Bar date (with symbol, the grain)."
         tests:
           - not_null
       - name: next_close
